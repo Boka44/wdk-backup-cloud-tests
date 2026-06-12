@@ -1,0 +1,16 @@
+{
+  "name": "playground",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "type": "module",
+  "scripts": {
+    "backup": "node scripts/wallet-backup.js",
+    "backup:cloudkit": "node scripts/wallet-backup-cloudkit.js"
+  },
+  "dependencies": {
+    "@tetherto/wdk-backup-cloud": "github:Boka44/wdk-backup-cloud#main",
+    "@tetherto/wdk-wallet-evm": "^1.0.0-beta.13",
+    "dotenv": "^17.4.2"
+  }
+}
