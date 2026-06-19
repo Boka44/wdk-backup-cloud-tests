@@ -34,12 +34,11 @@ Creates a wallet, encrypts the seed, uploads to your Google account `appDataFold
 
 ## CloudKit
 
-**`.env`** (all three required)
+**`.env`**
 
 ```env
 CLOUDKIT_CONTAINER_IDENTIFIER=iCloud.com.example.wallet
 CLOUDKIT_API_TOKEN=
-CLOUDKIT_WEB_AUTH_TOKEN=
 ```
 
 **Run**
@@ -48,7 +47,11 @@ CLOUDKIT_WEB_AUTH_TOKEN=
 npm run backup:cloudkit
 ```
 
-CloudKit needs Apple Dashboard setup plus a per-user web auth token. See **[CLOUDKIT.md](./CLOUDKIT.md)** for how to get each value.
+Opens a browser, you sign in with your Apple ID, and the backup goes to your iCloud private
+DB. The per-user web auth token is acquired live (never stored in `.env`). CloudKit needs a
+one-time Console setup (container, schema, API token with Allowed Origins = "Any Domain").
+See **[CLOUDKIT.md](./CLOUDKIT.md)** for setup and **[FINDINGS.md](./FINDINGS.md)** for the
+architecture analysis and the upstream bug this validation surfaced.
 
 ## Optional
 

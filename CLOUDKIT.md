@@ -1,23 +1,21 @@
-# CloudKit credentials for local testing
+# CloudKit setup for local testing
 
-The `backup:cloudkit` script needs **three** values in `.env`. Unlike Google Drive (one OAuth token), CloudKit splits **app** credentials (Dashboard) from **user** credentials (iCloud sign-in).
+`npm run backup:cloudkit` validates the real `CloudKitProvider` + `CloudBackup` against a
+live iCloud **private** database. It needs **two** values in `.env` plus a one-time
+Console setup.
 
 ```env
 CLOUDKIT_CONTAINER_IDENTIFIER=iCloud.com.example.wallet
 CLOUDKIT_API_TOKEN=
-CLOUDKIT_WEB_AUTH_TOKEN=
-```
-
-Optional:
-
-```env
-CLOUDKIT_ENVIRONMENT=development   # default if omitted
-CLOUDKIT_CLOUD_EMAIL=              # stored in backup metadata only
+# optional: CLOUDKIT_ENVIRONMENT=development   (default if omitted)
+# optional: CLOUDKIT_CLOUD_EMAIL=              (stored in the backup record)
+# optional: CLOUDKIT_CALLBACK_PORT=8787        (local sign-in callback server)
 ```
 
 ```bash
+npm install
 cp .env.example .env
-# fill in CloudKit values
+# fill CLOUDKIT_CONTAINER_IDENTIFIER + CLOUDKIT_API_TOKEN, then:
 npm run backup:cloudkit
 ```
 
@@ -25,150 +23,95 @@ npm run backup:cloudkit
 
 ## Prerequisites
 
-| Requirement | Notes |
-|-------------|--------|
-| **Paid Apple Developer Program** ($99/yr) | Needed to use [CloudKit Dashboard](https://icloud.developer.apple.com/) and create containers — unless TW shares their container/tokens |
-| **Schema deployed** | Record type `WalletBackup` in **Development** (see below) |
-| **iCloud account** | The user whose private database you are writing to |
-
-**Easiest path for TW coworkers:** ask the iOS / platform team for `CONTAINER`, `API_TOKEN`, and a fresh `WEB_AUTH_TOKEN` (dev). You may not need your own Apple account.
+| Requirement                        | Notes                                                                                                                                                                   |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apple Developer Program access** | Needed to use the [CloudKit Console](https://icloud.developer.apple.com/). On an org team you need the **"Access to Certificates, Identifiers & Profiles"** permission. |
+| **A CloudKit container**           | e.g. `iCloud.io.tether.wallet.backuptest` (Identifiers → **iCloud Containers**)                                                                                         |
+| **Schema deployed**                | Record type `WalletBackup` in **Development** (see below)                                                                                                               |
+| **An iCloud account**              | You sign in with it at runtime; the backup goes to _its_ private DB                                                                                                     |
 
 ---
 
 ## 1. `CLOUDKIT_CONTAINER_IDENTIFIER`
 
-The CloudKit container ID tied to your app.
+Create or reuse a CloudKit container.
 
-**If TW already has a wallet app:**
-
-- Ask for the container string (format: `iCloud.com.<team>.<app>`).
-- Use the same **environment** they use for testing (`development` vs `production`).
-
-**If setting up yourself:**
-
-1. [Apple Developer](https://developer.apple.com/account/) → **Certificates, Identifiers & Profiles** → **Identifiers**.
-2. Create an **App ID** (or open an existing one) → enable **CloudKit**.
-3. Open [CloudKit Dashboard](https://icloud.developer.apple.com/) → select the container (usually `iCloud.<bundle id>`).
-4. Copy the container identifier into `.env`:
+- **Reuse:** copy the identifier from the [CloudKit Console](https://icloud.developer.apple.com/)
+  container picker (format `iCloud.com.<team>.<app>`). Match the **environment** used for testing.
+- **Create your own:** [Apple Developer → Identifiers](https://developer.apple.com/account/resources/identifiers/list)
+  → switch the top-right filter from **App IDs** to **iCloud Containers** → **➕** → identifier
+  must start with `iCloud.` (e.g. `iCloud.io.tether.wallet.backuptest`). A fresh test container
+  is fully isolated from any production container.
 
 ```env
-CLOUDKIT_CONTAINER_IDENTIFIER=iCloud.com.yourteam.wallet
+CLOUDKIT_CONTAINER_IDENTIFIER=iCloud.io.tether.wallet.backuptest
 ```
 
----
+## 2. Deploy the schema (one-time, in CloudKit Console)
 
-## 2. `CLOUDKIT_API_TOKEN`
+CloudKit Console → your container → **Schema** → Record Types → add `WalletBackup`, then
+**Deploy Schema Changes** to **Development**:
 
-Long-lived **app** token for CloudKit Web Services. Created in the Dashboard (not in `.env` on a user’s machine in production — only for dev spikes).
+| Field           | Type   |
+| --------------- | ------ |
+| `encryptionKey` | String |
+| `savedAt`       | String |
+| `cloudEmail`    | String |
 
-1. CloudKit Dashboard → your container.
-2. **API Tokens** (left sidebar).
-3. **+** → create a token for **Development** (match `CLOUDKIT_ENVIRONMENT`).
-4. Copy the token immediately (shown once).
+(`@tetherto/wdk-backup-cloud` defaults: `recordType: WalletBackup`, `recordName: wallet_backup_key`,
+private database, `_defaultZone`.)
+
+## 3. `CLOUDKIT_API_TOKEN` (+ Allowed Origins)
+
+CloudKit Console → your container → **API Tokens** → **+** → create a token for **Development**
+(match `CLOUDKIT_ENVIRONMENT`). Copy it immediately — it's shown once.
 
 ```env
 CLOUDKIT_API_TOKEN=<paste token>
-CLOUDKIT_ENVIRONMENT=development
 ```
 
-Keep this secret like any API key. Do not commit `.env`.
+⚠️ **Required:** on that token, set **Allowed Origins → "Any Domain"**. The script's local
+sign-in page (`http://localhost:8787`) must be allowed to receive the token Apple posts back.
+Without this the sign-in popup completes but the token never returns.
 
----
+> The API token is **app-level** and the same for every user — that's why it's safe in env.
+> The per-user **web-auth token is _not_ in `.env`** — it's minted live in step 4.
 
-## 3. Schema (one-time, in Dashboard)
-
-Before upload works, deploy this record type to **Development**:
-
-**Record type:** `WalletBackup`
-
-| Field | Type |
-|-------|------|
-| `encryptionKey` | String |
-| `savedAt` | String |
-| `cloudEmail` | String |
-
-CloudKit Dashboard → **Schema** → add fields → **Deploy to Development**.
-
-(`@tetherto/wdk-backup-cloud` defaults: `recordType: WalletBackup`, `recordName: wallet_backup_key`.)
-
----
-
-## 4. `CLOUDKIT_WEB_AUTH_TOKEN` (user session)
-
-Required for the **private** database. Identifies **which iCloud user** owns the backup. **Expires** — refresh when the script fails auth.
-
-The Node script does **not** perform Apple sign-in. You must obtain this token elsewhere and paste it into `.env`.
-
-### Option A — TW / iOS team (recommended)
-
-Someone with the wallet iOS app (or internal build):
-
-1. Sign in with iCloud in the app (or dev tool that uses your container).
-2. Export the current **web auth token** for Development.
-3. Share securely with you (Slack DM, 1Password, etc.).
-
-Ask specifically for: *CloudKit web auth token for Development, private database.*
-
-### Option B — CloudKit JS in browser (dev spike)
-
-If you have container + API token and Dashboard **Web** access configured:
-
-1. CloudKit Dashboard → container → **Web** (or website configuration) → allow your test origin (e.g. `http://localhost:8787`).
-2. Use any minimal CloudKit JS sign-in page (or TW’s dev harness) with your `containerIdentifier` + `apiToken`.
-3. Sign in with **Sign in with Apple ID**.
-4. Browser DevTools → **Application** → **Cookies** → `https://api.apple-cloudkit.com`.
-5. Copy cookie **`ckWebAuthToken`** → `.env`:
-
-```env
-CLOUDKIT_WEB_AUTH_TOKEN=<cookie value>
-```
-
-### Option C — Skip Node; test on device
-
-Run backup through the **real iOS app** once `CloudKitProvider` is integrated. That is the production path; the playground script is optional for backend/SDK checks.
-
----
-
-## 5. Run the test
+## 4. Run — sign in live
 
 ```bash
-npm install
 npm run backup:cloudkit
 ```
+
+1. A browser opens `http://localhost:8787`.
+2. Click **Sign in with Apple ID** → authenticate (tick "keep me signed in" for a longer token).
+3. Apple posts the session back; the script runs the real provider end-to-end.
 
 **Success looks like:**
 
 ```
-Created wallet — address: 0x...
-Encrypted seed payload length: ...
-CloudKit available.
-Uploaded backup to CloudKit.
-Download verified: true
+Wallet address: 0x...
+Encrypted payload length: ...
+✅ Got web-auth token (len ...). Running real CloudKitProvider…
+isAvailable(): true
+uploadEncryptedKey(): ok
+downloadEncryptedKey(): ok
+  round-trip matches: true
+🎉 CloudKitProvider + CloudBackup validated end-to-end.
 ```
 
-**Verify in Dashboard:** CloudKit Dashboard → **Data** → Private Database → Development → record type `WalletBackup` → record `wallet_backup_key`.
-
----
+**Verify in Console:** **Data** → Private Database → Development → `WalletBackup` → `wallet_backup_key`.
 
 ## Troubleshooting
 
-| Error / symptom | Likely cause |
-|-----------------|--------------|
-| `Missing CLOUDKIT_* in .env` | Copy `.env.example` → `.env` and fill all three required vars |
-| `CloudKit not available` | Wrong/expired `WEB_AUTH_TOKEN`, wrong `API_TOKEN`, or schema not deployed |
-| `401` / auth errors | Refresh `CLOUDKIT_WEB_AUTH_TOKEN` |
-| `RECORD_TYPE` / schema errors | Deploy `WalletBackup` + fields to **Development** |
-| Wrong environment | `API_TOKEN` and `CLOUDKIT_ENVIRONMENT` must both be Development (or both Production) |
-| No Apple Developer access | Use Google `npm run backup` instead, or get tokens from TW |
+| Error / symptom                                               | Likely cause                                                     |
+| ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Sign-in popup completes but terminal hangs                    | API token **Allowed Origins** not set to "Any Domain"            |
+| `No redirectURL returned`                                     | Wrong/typo'd `CLOUDKIT_API_TOKEN`, or wrong environment          |
+| `400 bad_request … unexpected input at [line: 1, column: 33]` | The `force_update` bug — apply the patch above                   |
+| `RECORD_TYPE` / schema errors                                 | Deploy `WalletBackup` + fields to **Development**                |
+| `401` after a while                                           | Web-auth token expired (~30 min) — just re-run and sign in again |
+| `isAvailable(): false`                                        | Wrong API token, wrong environment, or schema not deployed       |
+| No Apple Developer access                                     | Use Google `npm run backup` instead, or ask a team Admin         |
 
 ---
-
-## Google vs CloudKit (this repo)
-
-| | Google (`npm run backup`) | CloudKit (`npm run backup:cloudkit`) |
-|---|---------------------------|--------------------------------------|
-| Dev setup | Google Cloud OAuth Playground | Apple Dashboard + user web auth token |
-| Tokens in `.env` | `GOOGLE_ACCESS_TOKEN` | `API_TOKEN` + `WEB_AUTH_TOKEN` + container |
-| Works without iOS app | Yes | Only if you can get `WEB_AUTH_TOKEN` another way |
-
-See [wdk-backup-cloud README](https://github.com/Boka44/wdk-backup-cloud/tree/main) for integrator API details.
