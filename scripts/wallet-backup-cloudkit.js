@@ -78,14 +78,14 @@ async function main () {
   }
   console.log('CloudKit available.')
 
-  await cloud.uploadEncryptedKey(encryptedKey, { version: 1 })
+  await cloud.uploadEncryptedKey(encryptedKey)
   console.log('Uploaded backup to CloudKit.')
 
   const downloaded = await cloud.downloadEncryptedKey()
-  console.log('Download verified:', downloaded !== null)
-  if (downloaded) {
-    console.log('Record platform:', downloaded.platform, 'version:', downloaded.version)
-  }
+    console.log('Download verified:', downloaded !== null)
+    if (downloaded) {
+      console.log('Record savedAt:', downloaded.savedAt)
+    }
 
   wallet.dispose()
 }

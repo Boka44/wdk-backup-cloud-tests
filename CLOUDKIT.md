@@ -85,8 +85,6 @@ Before upload works, deploy this record type to **Development**:
 |-------|------|
 | `encryptionKey` | String |
 | `savedAt` | String |
-| `platform` | String |
-| `version` | Int64 |
 | `cloudEmail` | String |
 
 CloudKit Dashboard → **Schema** → add fields → **Deploy to Development**.

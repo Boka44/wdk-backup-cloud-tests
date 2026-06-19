@@ -62,7 +62,7 @@ async function main () {
 
   // 3. Upload to Google Drive appDataFolder
   const cloud = new CloudBackup(new GoogleDriveProvider({ accessToken }))
-  await cloud.uploadEncryptedKey(encryptedKey, { version: 1 })
+  await cloud.uploadEncryptedKey(encryptedKey)
   console.log('Uploaded backup to Google Drive.')
 
   const downloaded = await cloud.downloadEncryptedKey()
