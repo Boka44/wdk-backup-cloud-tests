@@ -58,6 +58,8 @@ const containerIdentifier = requireEnv('CLOUDKIT_CONTAINER_IDENTIFIER')
 const environment = process.env.CLOUDKIT_ENVIRONMENT === 'production' ? 'production' : 'development'
 const apiToken = requireEnv('CLOUDKIT_API_TOKEN')
 
+// To Do: needs testing
+
 // ---------------------------------------------------------------------------
 // Sign-in page served on localhost. It asks Apple for a redirect URL using our
 // API token, opens the Apple sign-in popup, and forwards the session token that
